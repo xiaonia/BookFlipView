@@ -19,6 +19,7 @@ public class FlipRecycler {
 
     public FlipRecycler setAdapter(FlipAdapter adapter) {
         this.mAdapter = adapter;
+        this.clear();
         return this;
     }
 
@@ -82,6 +83,11 @@ public class FlipRecycler {
             }
             mActiveViews.add(viewHolder);
         }
+    }
+
+    public void clear() {
+        this.mActiveViews.clear();
+        this.mRecycleViews.clear();
     }
 
 }

@@ -1,7 +1,7 @@
 package demo.xuqingqi.flipview;
 
 import android.database.DataSetObservable;
-import android.view.View;
+import android.database.DataSetObserver;
 import android.view.ViewGroup;
 
 /**
@@ -17,6 +17,8 @@ public abstract class FlipAdapter<VH extends ViewHolder> {
 
     public abstract int getItemCount();
 
+    public abstract Object getItem(int position);
+
     public abstract boolean hasStableIds();
 
     public abstract VH onCreateViewHolder(ViewGroup parent, int viewType);
@@ -31,11 +33,20 @@ public abstract class FlipAdapter<VH extends ViewHolder> {
     public final void bindViewHolder(VH holder, int position) {
         holder.mPosition = position;
         holder.mItemId = getItemId(position);
+
         onBindViewHolder(holder, position);
     }
 
     public void notifyDataSetChanged() {
         mObservable.notifyChanged();
+    }
+
+    void registerDataSetObserver(DataSetObserver observer) {
+        this.mObservable.registerObserver(observer);
+    }
+
+    void unregisterDataSetObserver(DataSetObserver observer){
+        this.mObservable.unregisterObserver(observer);
     }
 
 }

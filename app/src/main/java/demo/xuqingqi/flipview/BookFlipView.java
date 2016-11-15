@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.Build;
 import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -20,6 +21,8 @@ public class BookFlipView extends FlipView {
 
     private static final int X_VEL_THRESHOLD = 800;
     private static final int X_DISTANCE_THRESHOLD = 300;
+
+    private OnViewChangeListener mListener;
 
     public BookFlipView(Context context) {
         super(context);
@@ -48,31 +51,36 @@ public class BookFlipView extends FlipView {
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent ev) {
-        if (!mFlipEnable) {
-            return false;
+        Log.e(TAG, "onInterceptTouchEvent() MotionEvent is " + ev.getAction());
+
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            return super.onInterceptTouchEvent(ev);
         }
 
-        boolean shouldIntercept = mDragHelper.shouldInterceptTouchEvent(ev);
-        if (mDragHelper.getViewDragState() != FlipDragHelper.STATE_SETTLING) {
-            mDragHelper.abort();
-        }
-
-        return super.onInterceptTouchEvent(ev) || shouldIntercept;
+        return mFlipEnable;
     }
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
+
         return super.dispatchTouchEvent(ev);
     }
 
     @Override
-    public boolean onTouchEvent(MotionEvent event) {
+    public boolean onTouchEvent(MotionEvent ev) {
+
         try {
-            mDragHelper.processTouchEvent(event);
+            mDragHelper.processTouchEvent(ev);
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+
         return true;
+    }
+
+    @Override
+    public void requestDisallowInterceptTouchEvent(boolean disallowIntercept) {
+        super.requestDisallowInterceptTouchEvent(disallowIntercept);
     }
 
     public class DragCallback extends FlipDragHelper.Callback {
@@ -88,6 +96,11 @@ public class BookFlipView extends FlipView {
                     || (changedView.getLeft() >= getBounds().left && dx > 0)) {
 
                 requestLayout();
+            }
+            if (mListener != null) {
+                //LayoutParams layoutParams = (LayoutParams) changedView.getLayoutParams();
+                //int position = layoutParams.getViewAdapterPosition();
+                mListener.onViewPositionChanged(changedView, left, top, dx, dy);
             }
         }
 
@@ -106,12 +119,34 @@ public class BookFlipView extends FlipView {
 
         @Override
         public int clampViewPositionHorizontal(View child, int left, int dx) {
+            LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+            int position = layoutParams.getViewAdapterPosition();
+
+            if (position == mAdapter.getItemCount() - 1) {
+                if (left < getBounds().left) {
+                    if (mListener != null) {
+                        mListener.onLastViewOverDraged(child, true, left, dx);
+                    }
+                }
+                return getBounds().left;
+            }
+
+            if (position == 0) {
+                if (left > getBounds().left) {
+                    if (mListener != null) {
+                        mListener.onFirstViewOverDraged(child, true, left, dx);
+                    }
+                }
+            }
+
             if (left > getBounds().left) {
                 return getBounds().left;
             }
+
             if (left < getBounds().left - child.getWidth()) {
                 return  getBounds().left - child.getWidth();
             }
+
             return left;
         }
 
@@ -120,6 +155,14 @@ public class BookFlipView extends FlipView {
             return top - dy;
         }
 
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        super.onLayout(changed, l, t, r, b);
+        if (mAdapter != null && mListener != null) {
+            mListener.onViewSelected(mFirstVisiablePosition);
+        }
     }
 
     @Override
@@ -149,4 +192,11 @@ public class BookFlipView extends FlipView {
         }
     }
 
+    public OnViewChangeListener getmListener() {
+        return mListener;
+    }
+
+    public void setOnViewChangeListener(OnViewChangeListener listener) {
+        this.mListener = listener;
+    }
 }

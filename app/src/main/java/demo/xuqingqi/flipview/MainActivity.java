@@ -88,7 +88,12 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public int getItemCount() {
-            return 100;
+            return 50;
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return null;
         }
 
         @Override
@@ -105,11 +110,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(MyViewHolder holder, int position) {
             holder.textView.setText("第<" + position + ">页");
-            holder.textView.setBackgroundColor(randomColor());
-        }
-
-        public int randomColor() {
-            return Color.rgb(random.nextInt(255), random.nextInt(255), random.nextInt(255));
         }
 
     }

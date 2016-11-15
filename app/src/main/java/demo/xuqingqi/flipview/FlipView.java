@@ -2,11 +2,11 @@ package demo.xuqingqi.flipview;
 
 import android.annotation.TargetApi;
 import android.content.Context;
+import android.database.DataSetObserver;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.os.Build;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -16,11 +16,18 @@ import android.view.ViewGroup;
 public class FlipView extends ViewGroup {
 
     private static final String TAG = "FlipView";
+
+    private static final int ELEVATION = 10;
+    private static final int DEFAULT_POSITION = 0;
+
     protected boolean mInLayout;
     protected FlipRecycler mRecycler;
     protected int mFirstVisiablePosition;
     protected FlipAdapter mAdapter;
     private Rect mBounds;
+    private DataSetObserver mObserver;
+    protected boolean mDataChanged;
+    private int mElevation;
 
     public FlipView(Context context) {
         super(context);
@@ -46,11 +53,25 @@ public class FlipView extends ViewGroup {
     private void initFlipView () {
         mRecycler = new FlipRecycler();
         mBounds = new Rect();
+        mObserver = new FlipDataSetObserver();
+        //开启硬件加速，否则阴影效果会失效
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            setLayerType(LAYER_TYPE_HARDWARE, null);
+        }
     }
 
     public void setAdapter(FlipAdapter adapter) {
+        if (mAdapter != null && mObserver != null) {
+            mAdapter.unregisterDataSetObserver(mObserver);
+        }
         this.mAdapter = adapter;
-        mRecycler.setAdapter(adapter);
+        this.mAdapter.registerDataSetObserver(this.mObserver);
+
+        resetList();
+        this.mRecycler.setAdapter(this.mAdapter);
+
+        requestLayout();
+        invalidate();
     }
 
     @Override
@@ -60,17 +81,13 @@ public class FlipView extends ViewGroup {
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        mInLayout = true;
-
-        final int childCount = getChildCount();
-        if (changed) {
-            for (int i = 0; i < childCount; i++) {
-                getChildAt(i).forceLayout();
-            }
+        if (mAdapter == null || mInLayout) {
+            return;
         }
 
-        invalidate();
+        mInLayout = true;
         layoutChildren();
+        invalidate();
         mInLayout = false;
     }
 
@@ -84,6 +101,8 @@ public class FlipView extends ViewGroup {
         if (view != null) {
             LayoutParams layoutParams = (LayoutParams) view.getLayoutParams();
             mFirstVisiablePosition = layoutParams.getViewAdapterPosition();
+        } else {
+            mFirstVisiablePosition = DEFAULT_POSITION;
         }
 
         for (int i = 0; i < getChildCount(); i++) {
@@ -100,17 +119,26 @@ public class FlipView extends ViewGroup {
             }
         }
 
+        //removeAllViewsInLayout();
         detachAllViewsFromParent();
 
-        if (mFirstVisiablePosition < mAdapter.getItemCount() - 1) {
-            makeAndAddChild(mFirstVisiablePosition + 1, true);
+        mElevation = 0;
+        if (mFirstVisiablePosition >= -1
+                && mFirstVisiablePosition < mAdapter.getItemCount() - 1) {
+
+            makeAndAddChild(mFirstVisiablePosition + 1, true, mElevation);
         }
 
-        makeAndAddChild(mFirstVisiablePosition, true);
+        mElevation += ELEVATION;
+        if (mFirstVisiablePosition >= 0) {
+            makeAndAddChild(mFirstVisiablePosition, true, mElevation);
+        }
 
+        mElevation += ELEVATION;
         if (mFirstVisiablePosition > 0) {
-            makeAndAddChild(mFirstVisiablePosition - 1, false);
+            makeAndAddChild(mFirstVisiablePosition - 1, false, mElevation);
         }
+
     }
 
     public View findFirstVisiableView () {
@@ -141,19 +169,18 @@ public class FlipView extends ViewGroup {
         return null;
     }
 
-    private void makeAndAddChild (int position, boolean isBelow) {
+    private void makeAndAddChild (int position, boolean isBelow, int elevation) {
         boolean recycled = true;
-        boolean needToMeasure = false;
         ViewHolder viewHolder = mRecycler.getActiveView(position);
         if (viewHolder == null) {
             viewHolder = mRecycler.getRecycleView(position);
             if (viewHolder == null) {
                 viewHolder = mAdapter.onCreateViewHolder(this, 0);
-                needToMeasure = true;
             }
+
+            mAdapter.bindViewHolder(viewHolder, position);
             recycled = false;
         }
-        mAdapter.bindViewHolder(viewHolder, position);
 
         View child = viewHolder.itemView;
         final ViewGroup.LayoutParams vlp = child.getLayoutParams();
@@ -175,28 +202,28 @@ public class FlipView extends ViewGroup {
         } else {
             addViewInLayout(child, -1, lp);
 
-            if (needToMeasure) {
-                final int childWidthSpec = MeasureSpec.makeMeasureSpec(getBounds().width(), MeasureSpec.EXACTLY);
-                final int lpHeight = lp.height;
-                final int childHeightSpec;
-                if (lpHeight > 0) {
-                    childHeightSpec = MeasureSpec.makeMeasureSpec(lpHeight, MeasureSpec.EXACTLY);
-                } else {
-                    childHeightSpec = MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY);
-                }
-                child.measure(childWidthSpec, childHeightSpec);
-            }
-
-            if (isBelow) {
-                child.layout(getBounds().left, getBounds().top,
-                        getBounds().right, getBounds().bottom);
+            int childWidthSpec = MeasureSpec.makeMeasureSpec(getBounds().width(), MeasureSpec.EXACTLY);
+            int childHeightSpec;
+            final int lpHeight = lp.height;
+            if (lpHeight > 0) {
+                childHeightSpec = MeasureSpec.makeMeasureSpec(lpHeight, MeasureSpec.EXACTLY);
             } else {
-                child.layout(getBounds().left - getBounds().width(), getBounds().top,
-                        getBounds().left, getBounds().bottom);
+                childHeightSpec = MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY);
             }
+            child.measure(childWidthSpec, childHeightSpec);
         }
 
-        Log.e(TAG, "child count is " + getChildCount());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            child.setElevation(elevation);
+        }
+
+        if (isBelow) {
+            child.layout(getBounds().left, getBounds().top,
+                    getBounds().right, getBounds().bottom);
+        } else {
+            child.layout(getBounds().left - getBounds().width(), getBounds().top,
+                    getBounds().left, getBounds().bottom);
+        }
     }
 
     public Rect getBounds() {
@@ -254,6 +281,55 @@ public class FlipView extends ViewGroup {
             return mViewHolder.mPosition;
         }
 
+    }
+
+    public class FlipDataSetObserver extends DataSetObserver {
+
+        public void onChanged() {
+
+            recycleAllViews();
+
+            requestLayout();
+            invalidate();
+        }
+
+        public void onInvalidated() {
+            // Do nothing
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+
+        recycleAllViews();
+    }
+
+    private void resetList() {
+        removeAllViewsInLayout();
+        mFirstVisiablePosition = 0;
+        mDataChanged = false;
+    }
+
+    private void recycleAllViews() {
+        View view = findFirstVisiableView();
+        if (view != null) {
+            LayoutParams layoutParams = (LayoutParams) view.getLayoutParams();
+            mFirstVisiablePosition = layoutParams.getViewAdapterPosition();
+        }
+
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+            ViewHolder viewHolder = layoutParams.mViewHolder;
+            mRecycler.setRecycleView(viewHolder);
+        }
+
+        if (mFirstVisiablePosition >= mAdapter.getItemCount()
+                || mFirstVisiablePosition < 0) {
+
+            mFirstVisiablePosition = 0;
+        }
     }
 
 }
